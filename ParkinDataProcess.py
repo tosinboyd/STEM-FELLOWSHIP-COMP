@@ -4,6 +4,7 @@ import os
 import numpy as np
 from PIL import Image, ImageQt
 import pandas as pd
+import time
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as XLImage
