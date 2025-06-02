@@ -252,11 +252,7 @@ class Ui_Dialog(object):
         QtCore.QMetaObject.connectSlotsByName(Dialog)
 
         self.pushButton.clicked.connect(self.show_Level1Screen)
-        self.pushButton_2.clicked.connect(self.show_Level2Screen)
-        self.pushButton_3.clicked.connect(self.show_Level3Screen)
-        self.pushButton_4.clicked.connect(self.show_Level4Screen)
-        self.pushButton_5.clicked.connect(self.show_Level5Screen)
-        self.pushButton_6.clicked.connect(self.show_Level6Screen)
+
 
 
     def retranslateUi(self, Dialog):
@@ -275,29 +271,6 @@ class Ui_Dialog(object):
         self.pen_screen = Level1_Screen(self.Dialog, self.player_name, self.cursor_pixmap)
         self.Dialog.hide()
         self.pen_screen.show()
-
-    def show_Level2Screen(self):
-        self.pen2_screen = Level2_Screen(self.Dialog, self.player_name, self.cursor_pixmap)
-        self.Dialog.hide()
-        self.pen2_screen.show()
-    def show_Level3Screen(self):
-        self.pen3_screen = Level3_Screen(self.Dialog, self.player_name, self.cursor_pixmap)
-        self.Dialog.hide()
-        self.pen3_screen.show()
-
-    def show_Level4Screen(self):
-        self.pen_screen = Level4_Screen(self.Dialog, self.player_name, self.cursor_pixmap)
-        self.Dialog.hide()
-        self.pen_screen.show()
-
-    def show_Level5Screen(self):
-        self.pen2_screen = Level5_Screen(self.Dialog, self.player_name, self.cursor_pixmap)
-        self.Dialog.hide()
-        self.pen2_screen.show()
-    def show_Level6Screen(self):
-        self.pen3_screen = Level6_Screen(self.Dialog, self.player_name, self.cursor_pixmap)
-        self.Dialog.hide()
-        self.pen3_screen.show()
 
 
 class Level1_Screen(QWidget):
