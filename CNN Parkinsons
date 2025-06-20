@@ -1,8 +1,11 @@
 import tensorflow as tf
 from tensorflow.keras import layers, models
 from tensorflow.keras.applications import MobileNetV2
-from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
 import os
+
+# === CONFIG ===
+IMG_SIZE = (128, 128)
+BATCH_SIZE = 32
 
 # === PATH SETUP ===
 base_wave = r"C:\Users\Hooria\OneDrive - YMCAs in Canada\Desktop\archive (1)\drawings\wave"
@@ -14,35 +17,29 @@ train_dirs = [os.path.join(base_wave, "training"),
 test_dirs = [os.path.join(base_wave, "testing"),
              os.path.join(base_spiral, "testing")]
 
-# === IMPROVED HYPERPARAMETERS ===
-IMG_SIZE = (224, 224)  # Larger input size for better feature extraction
-BATCH_SIZE = 16  # Adjusted batch size to avoid shape issues
-
 # === LOAD & COMBINE TRAINING DATA ===
 train_ds1 = tf.keras.preprocessing.image_dataset_from_directory(
     train_dirs[0],
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
     label_mode='int',
-    shuffle=True,
-    seed=42  # Added seed for reproducibility
+    shuffle=True
 )
 train_ds2 = tf.keras.preprocessing.image_dataset_from_directory(
     train_dirs[1],
     image_size=IMG_SIZE,
     batch_size=BATCH_SIZE,
     label_mode='int',
-    shuffle=True,
-    seed=42
+    shuffle=True
 )
 
-# Save class names before concatenation
+# ✅ Save class names before concatenation
 class_names = train_ds1.class_names
 print("Class names:", class_names)
 
-# Combine & shuffle datasets
+# ✅ Combine & shuffle
 train_ds = train_ds1.concatenate(train_ds2)
-train_ds = train_ds.shuffle(1000, seed=42, reshuffle_each_iteration=True)
+train_ds = train_ds.shuffle(100, reshuffle_each_iteration=True)
 
 # === LOAD & COMBINE TESTING DATA ===
 test_ds1 = tf.keras.preprocessing.image_dataset_from_directory(
@@ -61,181 +58,36 @@ test_ds2 = tf.keras.preprocessing.image_dataset_from_directory(
 )
 test_ds = test_ds1.concatenate(test_ds2)
 
-# === CREATE VALIDATION SPLIT ===
-# Split training data for validation
-train_size = tf.data.experimental.cardinality(train_ds).numpy()
-val_size = int(0.2 * train_size)  # 20% for validation
-
-val_ds = train_ds.take(val_size)
-train_ds = train_ds.skip(val_size)
-
-print(f"Training batches: {tf.data.experimental.cardinality(train_ds).numpy()}")
-print(f"Validation batches: {tf.data.experimental.cardinality(val_ds).numpy()}")
-print(f"Test batches: {tf.data.experimental.cardinality(test_ds).numpy()}")
-
-# === ENHANCED DATA AUGMENTATION ===
+# === DATA AUGMENTATION ===
 data_augmentation = tf.keras.Sequential([
-    layers.RandomFlip("horizontal_and_vertical"),  # Both directions
-    layers.RandomRotation(0.2),  # Increased rotation
-    layers.RandomZoom(0.2),  # Increased zoom
-    layers.RandomTranslation(0.1, 0.1),  # Added translation
-    layers.RandomContrast(0.2),  # Added contrast variation
-    layers.RandomBrightness(0.1),  # Added brightness variation
+    layers.RandomFlip("horizontal"),
+    layers.RandomRotation(0.1),
+    layers.RandomZoom(0.1),
 ])
 
-# === IMPROVED MODEL ARCHITECTURE ===
-# Use MobileNetV2 with higher input resolution
+# === BUILD MODEL ===
 base_model = MobileNetV2(input_shape=IMG_SIZE + (3,),
                          include_top=False,
                          weights='imagenet')
+base_model.trainable = False  # Freeze base model
 
-# Fine-tuning: Unfreeze top layers for better adaptation
-base_model.trainable = True
-# Freeze early layers, unfreeze later ones
-for layer in base_model.layers[:-30]:
-    layer.trainable = False
-
-# Build enhanced model
 model = models.Sequential([
     data_augmentation,
-    layers.Rescaling(1. / 255),
+    layers.Rescaling(1./255),
     base_model,
     layers.GlobalAveragePooling2D(),
-    layers.BatchNormalization(),  # Added batch normalization
-    layers.Dense(256, activation='relu'),  # Increased neurons
-    layers.Dropout(0.3),  # Reduced dropout initially
-    layers.BatchNormalization(),  # Another batch norm
-    layers.Dense(128, activation='relu'),  # Additional dense layer
-    layers.Dropout(0.4),
-    layers.Dense(64, activation='relu'),  # Third dense layer
-    layers.Dropout(0.2),
-    layers.Dense(2, activation='softmax')  # Changed to softmax for probabilities
+    layers.Dense(128, activation='relu'),
+    layers.Dropout(0.5),
+    layers.Dense(2)  # 2 output classes: healthy, parkinson
 ])
 
-# === ADVANCED OPTIMIZER AND COMPILATION ===
-# Use Adam with custom learning rate
-initial_learning_rate = 0.0001
-optimizer = tf.keras.optimizers.Adam(learning_rate=initial_learning_rate)
-
-model.compile(
-    optimizer=optimizer,
-    loss='sparse_categorical_crossentropy',  # Removed from_logits since using softmax
-    metrics=['accuracy']  # Simplified metrics to avoid shape issues
-)
-
-# === CALLBACKS FOR BETTER TRAINING ===
-callbacks = [
-    # Reduce learning rate when validation loss plateaus
-    ReduceLROnPlateau(
-        monitor='val_loss',
-        factor=0.5,
-        patience=5,
-        min_lr=1e-7,
-        verbose=1
-    ),
-
-    # Early stopping to prevent overfitting
-    EarlyStopping(
-        monitor='val_loss',
-        patience=10,
-        restore_best_weights=True,
-        verbose=1
-    )
-]
-
-# === PERFORMANCE OPTIMIZATION ===
-# Prefetch for better performance
-AUTOTUNE = tf.data.AUTOTUNE
-train_ds = train_ds.prefetch(buffer_size=AUTOTUNE)
-val_ds = val_ds.prefetch(buffer_size=AUTOTUNE)
-test_ds = test_ds.prefetch(buffer_size=AUTOTUNE)
+model.compile(optimizer='adam',
+              loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
+              metrics=['accuracy'])
 
 # === TRAIN MODEL ===
-print("Starting training...")
-history = model.fit(
-    train_ds,
-    validation_data=val_ds,
-    epochs=50,  # Increased epochs (early stopping will prevent overfitting)
-    callbacks=callbacks,
-    verbose=1
-)
+history = model.fit(train_ds, validation_data=test_ds, epochs=10)
 
-# === EVALUATE ON TEST SET ===
-print("\nEvaluating on test set...")
-test_results = model.evaluate(test_ds, verbose=1)
-test_loss, test_acc = test_results
-
-print(f"\n✅ Final Test Results:")
-print(f"   Loss: {test_loss:.4f}")
-print(f"   Accuracy: {test_acc:.4f}")
-
-# Get predictions for additional metrics
-print("\nCalculating additional metrics...")
-y_pred = model.predict(test_ds)
-y_pred_classes = tf.argmax(y_pred, axis=1)
-
-# Get true labels
-y_true = []
-for batch in test_ds:
-    y_true.extend(batch[1].numpy())
-y_true = tf.constant(y_true)
-
-# Calculate precision, recall, and F1-score manually
-from sklearn.metrics import precision_score, recall_score, f1_score, classification_report
-
-precision = precision_score(y_true, y_pred_classes, average='weighted')
-recall = recall_score(y_true, y_pred_classes, average='weighted')
-f1 = f1_score(y_true, y_pred_classes, average='weighted')
-
-print(f"   Precision: {precision:.4f}")
-print(f"   Recall: {recall:.4f}")
-print(f"   F1-Score: {f1:.4f}")
-
-print("\nDetailed Classification Report:")
-print(classification_report(y_true, y_pred_classes, target_names=class_names))
-
-# === PLOT TRAINING HISTORY ===
-import matplotlib.pyplot as plt
-
-
-def plot_training_history(history):
-    fig, axes = plt.subplots(1, 2, figsize=(12, 5))
-
-    # Accuracy
-    axes[0].plot(history.history['accuracy'], label='Training Accuracy')
-    axes[0].plot(history.history['val_accuracy'], label='Validation Accuracy')
-    axes[0].set_title('Model Accuracy')
-    axes[0].set_xlabel('Epoch')
-    axes[0].set_ylabel('Accuracy')
-    axes[0].legend()
-    axes[0].grid(True)
-
-    # Loss
-    axes[1].plot(history.history['loss'], label='Training Loss')
-    axes[1].plot(history.history['val_loss'], label='Validation Loss')
-    axes[1].set_title('Model Loss')
-    axes[1].set_xlabel('Epoch')
-    axes[1].set_ylabel('Loss')
-    axes[1].legend()
-    axes[1].grid(True)
-
-    plt.tight_layout()
-    plt.show()
-
-
-# Plot the training history
-plot_training_history(history)
-
-# === SAVE FINAL MODEL ===
-print("\nSaving model...")
-try:
-    model.save('final_parkinson_model.keras')  # Use .keras format instead of .h5
-    print("✅ Model saved as 'final_parkinson_model.keras'")
-except Exception as e:
-    print(f"❌ Error saving model: {e}")
-    # Try alternative save method
-    try:
-        model.save_weights('parkinson_model_weights')
-        print("✅ Model weights saved as 'parkinson_model_weights'")
-    except Exception as e2:
-        print(f"❌ Error saving weights: {e2}")
+# === EVALUATE ===
+test_loss, test_acc = model.evaluate(test_ds)
+print(f"\n✅ Combined Test Accuracy: {test_acc:.2f}")
