@@ -91,3 +91,35 @@ history = model.fit(train_ds, validation_data=test_ds, epochs=10)
 # === EVALUATE ===
 test_loss, test_acc = model.evaluate(test_ds)
 print(f"\n✅ Combined Test Accuracy: {test_acc:.2f}")
+
+
+# Plotting loss and accuracy curves
+history = model.fit(train_ds, validation_data=test_ds, epochs=10)
+import matplotlib.pyplot as plt
+
+# Extract metrics from history
+acc = history.history['accuracy']
+val_acc = history.history['val_accuracy']
+loss = history.history['loss']
+val_loss = history.history['val_loss']
+epochs_range = range(len(acc))
+
+# Plot
+plt.figure(figsize=(12, 5))
+
+# Accuracy
+plt.subplot(1, 2, 1)
+plt.plot(epochs_range, acc, label='Training Accuracy')
+plt.plot(epochs_range, val_acc, label='Validation Accuracy')
+plt.legend(loc='lower right')
+plt.title('Training and Validation Accuracy')
+
+# Loss
+plt.subplot(1, 2, 2)
+plt.plot(epochs_range, loss, label='Training Loss')
+plt.plot(epochs_range, val_loss, label='Validation Loss')
+plt.legend(loc='upper right')
+plt.title('Training and Validation Loss')
+
+plt.tight_layout()
+plt.show()
