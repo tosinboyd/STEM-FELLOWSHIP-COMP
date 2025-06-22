@@ -5,6 +5,7 @@ import numpy as np
 from PIL import Image, ImageQt
 import pandas as pd
 import time
+import csv
 from datetime import datetime
 from openpyxl import Workbook, load_workbook
 from openpyxl.drawing.image import Image as XLImage
@@ -323,6 +324,9 @@ class Level1_Screen(QWidget):
         self.setLayout(layout)
         self.draw_sin_wave()
 
+        self.stroke_data = []
+        self.start_time = time.time()
+
     def draw_sin_wave(self):
         painter = QPainter(self.reference_layer)
         pen = QPen(Qt.black, 5)
@@ -455,6 +459,15 @@ class Level1_Screen(QWidget):
         except Exception as e:
             print(f"Excel insert failed: {e}")
 
+        csv_path = os.path.join(self.SAVE_FOLDER, f"{self.player_name}_stroke_data{suffix}.csv")
+        with open(csv_path, mode='w', newline='') as f:
+            writer = csv.DictWriter(f, fieldnames=["x", "y", "pressure", "timestamp"])
+            writer.writeheader()
+            writer.writerows(self.stroke_data)
+
+        print(f"✅ Stroke data saved to {csv_path}")
+
+
     def paintEvent(self, event):
         painter = QPainter(self)
         painter.drawPixmap(0, 0, self.drawing)
@@ -482,7 +495,17 @@ class Level1_Screen(QWidget):
             painter.setPen(pen)
             painter.drawLine(self.last_point, event.pos())
             self.last_point = event.pos()
-            self.update()
+            
+            # Log data
+            timestamp = time.time() - self.start_time
+            self.stroke_data.append({
+                "x": event.pos().x(),
+                "y": event.pos().y(),
+                "pressure": 1.0,
+                "timestamp": round(timestamp, 3)
+        })
+
+        self.update()
 
     def mouseReleaseEvent(self, event):
         self.last_point = None
@@ -498,9 +521,18 @@ class Level1_Screen(QWidget):
             painter.drawLine(self.last_point, event.pos())
             self.last_point = event.pos()
             self.update()
+
+            timestamp = time.time() - self.start_time
+            self.stroke_data.append({
+                "x": event.pos().x(),
+                "y": event.pos().y(),
+                "pressure": round(event.pressure(), 3),
+                "timestamp": round(timestamp, 3)
+            })
         elif event.type() == QTabletEvent.TabletRelease:
             self.last_point = None
         event.accept()
+
 
     def open_main_screen(self):
         self.hide()
