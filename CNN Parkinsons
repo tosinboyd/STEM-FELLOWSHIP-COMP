@@ -71,7 +71,7 @@ base_model = MobileNetV2(input_shape=IMG_SIZE + (3,),
                          weights='imagenet')
 base_model.trainable = False  # Freeze base model
 
-model = models.Sequential([
+parkinsons_model = models.Sequential([
     data_augmentation,
     layers.Rescaling(1./255),
     base_model,
@@ -81,20 +81,20 @@ model = models.Sequential([
     layers.Dense(2)  # 2 output classes: healthy, parkinson
 ])
 
-model.compile(optimizer='adam',
+parkinsons_model.compile(optimizer='adam',
               loss=tf.keras.losses.SparseCategoricalCrossentropy(from_logits=True),
               metrics=['accuracy'])
 
 # === TRAIN MODEL ===
-history = model.fit(train_ds, validation_data=test_ds, epochs=10)
+history = parkinsons_model.fit(train_ds, validation_data=test_ds, epochs=10)
 
 # === EVALUATE ===
-test_loss, test_acc = model.evaluate(test_ds)
+test_loss, test_acc = parkinsons_model.evaluate(test_ds)
 print(f"\n✅ Combined Test Accuracy: {test_acc:.2f}")
 
 
 # Plotting loss and accuracy curves
-history = model.fit(train_ds, validation_data=test_ds, epochs=10)
+history = parkinsons_model.fit(train_ds, validation_data=test_ds, epochs=10)
 import matplotlib.pyplot as plt
 
 # Extract metrics from history
@@ -123,3 +123,46 @@ plt.title('Training and Validation Loss')
 
 plt.tight_layout()
 plt.show()
+
+# Save the model
+parkinsons_model.save("parkinsons_model.h5") 
+
+
+##Feeding new data into model
+
+from tensorflow.keras.models import load_model
+from tensorflow.keras.preprocessing import image
+import numpy as np
+
+# Load the trained CNN model
+cnn_model = load_model("parkinsons_model.h5") 
+
+def predict_parkinsons_risk(image_path):
+    img = image.load_img(image_path, target_size=(128, 128))  
+    img_array = image.img_to_array(img)
+    img_array = np.expand_dims(img_array, axis=0) 
+    img_array = img_array / 255.0  #normalize
+
+    prediction = cnn_model.predict(img_array)[0] 
+
+    # Interpreting the prediction
+    prob = tf.nn.softmax(prediction).numpy()
+    parkinsons_score = prob[1] 
+    return classify_risk(parkinsons_score)
+
+
+##Calculating and returning risk analysis
+
+image_path = r"C:\Users\Tosin Boyede\Desktop\cnn_image_test.png"
+
+risk = predict_parkinsons_risk(image_path)
+
+def classify_risk(risk):
+    if risk < 0.33:
+        return "Low Risk"
+    elif risk < 0.66:
+        return "Medium Risk"
+    else:
+        return "High Risk"
+
+
