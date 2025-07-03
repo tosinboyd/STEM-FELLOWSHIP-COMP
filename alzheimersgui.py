@@ -4,6 +4,8 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.ensemble import RandomForestClassifier
+import joblib
+
 
 # === LOAD & PREPROCESS DATA ===
 df = pd.read_csv("data.csv")
@@ -39,3 +41,9 @@ y_probs_rf = rf_model.predict_proba(X_test)[:, 1]
 low_risk_rf = (y_probs_rf <= 0.33)
 medium_risk_rf = (y_probs_rf > 0.33) & (y_probs_rf <= 0.66)
 high_risk_rf = (y_probs_rf > 0.66)
+
+# Save
+joblib.dump(rf_model, "model.pkl")
+
+# Load
+model = joblib.load("model.pkl")
