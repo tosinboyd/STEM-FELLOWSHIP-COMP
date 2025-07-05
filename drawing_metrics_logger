@@ -152,7 +152,7 @@ class DrawingMetricsLogger:
         img_array = np.array(img)
         return np.count_nonzero(img_array < 255) / img_array.size
 
-    def process_and_save_image(self, drawing_pixmap, player_name, session_id):
+    def process_and_save_image(self, drawing_pixmap, player_name, session_id,level):
         """
         Process the drawing image and save both processed and thumbnail versions.
 
@@ -168,8 +168,8 @@ class DrawingMetricsLogger:
             os.makedirs(self.save_folder)
 
         suffix = f"_{session_id}"
-        processed_path = os.path.join(self.save_folder, f"{player_name}_processed{suffix}.png")
-        excel_img_path = os.path.join(self.save_folder, f"{player_name}_excel{suffix}.png")
+        processed_path = os.path.join(self.save_folder, f"{player_name}_{level}_{suffix}.png")
+        excel_img_path = os.path.join(self.save_folder, f"{player_name}_{level}_excel{suffix}.png")
         temp_path = os.path.join(self.save_folder, "temp.png")
 
         # Save current drawing pixmap temporarily
@@ -208,7 +208,8 @@ class DrawingMetricsLogger:
                 "Mean Speed", "Mean Acceleration",
                 "Mean Pressure", "Pressure Variance",
                 "Pendown Count", "Max X", "Max Y",
-                "GMRTP", "Mean Jerk", "Dispersion Index", "Average CISP"
+                "GMRTP", "Mean Jerk", "Dispersion Index", "Average CISP",
+                "Risk Level", "Interpretation"  # Added Parkinson's detection columns
             ]
             ws.append(headers)
             wb.save(self.excel_path)
@@ -224,7 +225,7 @@ class DrawingMetricsLogger:
         existing_entries = [cell.value for cell in ws['A'] if cell.value == player_name]
         return len(existing_entries) + 1
 
-    def save_to_excel(self, player_name, level, metrics, processed_image_path, excel_image_path):
+    def save_to_excel(self, player_name, level, metrics, processed_image_path, excel_image_path, prediction_result=None):
         """
         Save all metrics and image to Excel file.
 
@@ -234,6 +235,7 @@ class DrawingMetricsLogger:
             metrics (dict): Dictionary of calculated metrics
             processed_image_path (str): Path to processed image
             excel_image_path (str): Path to thumbnail image for Excel
+            prediction_result (dict): Optional Parkinson's detection results
         """
         self.initialize_excel_file()
 
@@ -243,14 +245,16 @@ class DrawingMetricsLogger:
         # Calculate dispersion index
         dispersion_index = self.calculate_dispersion_index(processed_image_path)
 
-        # Prepare row data
+        # Prepare row data with Parkinson's detection results
         row_data = [
             player_name, None, level,
             metrics['total_time'], metrics['air_time'], metrics['paper_time'],
             metrics['mean_speed'], metrics['mean_acceleration'],
             metrics['mean_pressure'], metrics['pressure_variance'],
             metrics['pendown_count'], metrics['max_x'], metrics['max_y'],
-            metrics['gmrtp'], metrics['mean_jerk'], dispersion_index, metrics['avg_cisp']
+            metrics['gmrtp'], metrics['mean_jerk'], dispersion_index, metrics['avg_cisp'],
+            prediction_result.get('risk_level', '') if prediction_result else '',
+            prediction_result.get('interpretation', '') if prediction_result else ''
         ]
 
         # Add row to worksheet
@@ -271,7 +275,6 @@ class DrawingMetricsLogger:
             ws.add_image(xl_img)
 
             wb.save(self.excel_path)
-            print(f"Successfully saved data to Excel for {player_name}")
 
         except Exception as e:
             print(f"Excel insert failed: {e}")
@@ -280,7 +283,7 @@ class DrawingMetricsLogger:
 
     def save_complete_session(self, drawing_pixmap, player_name, level,
                               pen_positions, pen_timestamps, pressure_readings,
-                              start_time, end_time, air_time, paper_time, pendown_count):
+                              start_time, end_time, air_time, paper_time, pendown_count, prediction_result=None):
         """
         Complete method to process image, calculate metrics, and save everything.
 
@@ -296,13 +299,14 @@ class DrawingMetricsLogger:
             air_time (float): Total air time
             paper_time (float): Total paper time
             pendown_count (int): Number of pen down events
+            prediction_result (dict): Optional Parkinson's detection results
         """
         # Get session ID
         session_id = self.get_next_session_id(player_name)
 
         # Process and save images
         processed_path, excel_img_path = self.process_and_save_image(
-            drawing_pixmap, player_name, session_id
+            drawing_pixmap, player_name, session_id,level
         )
 
         # Calculate metrics
@@ -311,7 +315,9 @@ class DrawingMetricsLogger:
             start_time, end_time, air_time, paper_time, pendown_count
         )
 
-        # Save to Excel
-        self.save_to_excel(player_name, level, metrics, processed_path, excel_img_path)
+        # Save to Excel with prediction results
+        self.save_to_excel(player_name, level, metrics, processed_path, excel_img_path, prediction_result)
 
         return metrics
+
+
