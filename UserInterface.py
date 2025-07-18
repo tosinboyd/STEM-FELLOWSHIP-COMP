@@ -6,6 +6,7 @@ import pandas as pd
 import time
 import random
 import tempfile
+import warnings
 
 from PIL import Image, ImageQt
 from datetime import datetime
@@ -18,6 +19,8 @@ from PyQt5.QtWidgets import *
 from PyQt5.QtGui import*
 from PyQt5.QtCore import*
 from PyQt5 import *
+
+warnings.filterwarnings('ignore')
 
 
 class CursorSelectionScreen(QWidget):
@@ -49,7 +52,7 @@ class CursorSelectionScreen(QWidget):
         cursor_widget = QWidget()
         cursor_widget.setLayout(cursor_layout)
 
-        cursor_files = ["C1.png", "C2.png", "C3.png", "C4.png", "C5.png","C6.png"]
+        cursor_files = ["Images/C1.png", "Images/C2.png", "Images/C3.png", "Images/C4.png", "Images/C5.png","Images/C6.png"]
         color_list = ["FF6B6B", "4ECDC4", "FFE66D", "95E1D3", "3498DB", "E9C9C4"]
 
         for i, cursor_file in enumerate(cursor_files):
@@ -815,18 +818,6 @@ class Level1_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
 
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
@@ -981,7 +972,6 @@ class Level1_Screen(QWidget):
         self.hide()
         self.main_dialog.show()
 
-
 class Level2_Screen(QWidget):
     def __init__(self,main_dialog, player_name):
         super().__init__()
@@ -990,10 +980,9 @@ class Level2_Screen(QWidget):
         self.SAVE_FOLDER = r"C:\Users\Hooria\PycharmProjects\Project4\.venv\city_img"
 
         self.metrics_logger = DrawingMetricsLogger(self.SAVE_FOLDER, "Level1Results.xlsx")
-
+        self.V_FOLDER = r"C:\Users\Hooria\PycharmProjects\Project4\.venv"
         self.parkinsons_detector = ParkinsonsDetector(
-            model_path=os.path.join(self.SAVE_FOLDER, 'parkinsons_model.keras'),
-            data_path=r'C:\Users\Hooria\Downloads\archive (1)\YOLODatasetFull\organized_dataset',
+            model_path=os.path.join(self.V_FOLDER, 'best_parkinsons_model.keras'),
             image_size=(128, 128)
         )
 
@@ -1011,7 +1000,7 @@ class Level2_Screen(QWidget):
         self.setMinimumSize(2000, 1100)
         self.setMouseTracking(True)
 
-        cursor_pixmap = QPixmap("C6.png")
+        cursor_pixmap = QPixmap("Images/C6.png")
         cursor_for_game = cursor_pixmap.scaled(200, 200, Qt.KeepAspectRatioByExpanding, Qt.SmoothTransformation)
         self.setCursor(QCursor(cursor_for_game))
 
@@ -1306,9 +1295,9 @@ class Level2_Screen(QWidget):
 
     def create_drawing_pixmap(self):
         original_size = self.drawing_layer.size()
-        crop_left = 500
-        crop_right = 450
-        crop_top = 210
+        crop_left = 0
+        crop_right = 0
+        crop_top = 50
         crop_bottom = 50
 
         new_width = max(100, original_size.width() - crop_left - crop_right)
@@ -1442,8 +1431,7 @@ class Level2_Screen(QWidget):
 
             pixmap = self.create_drawing_pixmap()
 
-            timestamp = int(time.time())
-            temp_image_filename = f"temp_{self.player_name}_Level2_{timestamp}.png"
+            temp_image_filename = f"temp_{self.player_name}_Level2.png"
             temp_image_path = os.path.join(self.SAVE_FOLDER, temp_image_filename)
 
             if not os.path.exists(self.SAVE_FOLDER):
@@ -1530,26 +1518,13 @@ class Level2_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
-
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
             alz_interpretation.setAlignment(Qt.AlignCenter)
             alz_interpretation.setStyleSheet("""
                 QLabel {
                     color: #444444;
-                    font-size: 20px;
+                    font-size: 25px;
                     margin-bottom: 20px;
                     padding: 10px;
                     border: 1px solid #ddd;
@@ -1585,15 +1560,13 @@ class Level2_Screen(QWidget):
                 }
             """)
             layout.addWidget(park_risk_label)
-
-
             park_interpretation = QLabel(self.prediction_result.get('interpretation', 'No interpretation available'))
             park_interpretation.setWordWrap(True)
             park_interpretation.setAlignment(Qt.AlignCenter)
             park_interpretation.setStyleSheet("""
                 QLabel {
                     color: #444444;
-                    font-size: 20px;
+                    font-size: 25px;
                     margin-bottom: 20px;
                     padding: 10px;
                     border: 1px solid #ddd;
@@ -1613,7 +1586,7 @@ class Level2_Screen(QWidget):
                 background-color: #4169E1;
                 border-radius: 15px;
                 font-weight: bold;
-                font-size: 18px;
+                font-size: 25px;
             }
             QPushButton:hover {
                 background-color: #6495ED;
@@ -1712,7 +1685,7 @@ class Level2_Screen(QWidget):
 
             self.pen_positions.append((event.pos().x(), event.pos().y()))
             self.pen_timestamps.append(timestamp)
-            self.pressure_readings.append(max(0.1, min(1.0, 0.5 + np.random.normal(0, 0.1))))
+            self.pressure_readings.append(1.0)
 
             delta_time = timestamp - self.last_time
             self.paper_time += delta_time
@@ -1743,7 +1716,7 @@ class Level2_Screen(QWidget):
         elif event.type() == QTabletEvent.TabletMove and self.last_point is not None:
             painter = QPainter(self.drawing_layer)
             pressure = event.pressure()
-            pen = QPen(Qt.black, pressure * 50, Qt.SolidLine, Qt.RoundCap)
+            pen = QPen(Qt.black,50, Qt.SolidLine, Qt.RoundCap)
             painter.setPen(pen)
             painter.drawLine(self.last_point, event.pos())
             self.last_point = event.pos()
@@ -1768,7 +1741,6 @@ class Level2_Screen(QWidget):
         self.hide()
         self.main_dialog.show()
 
-
 class Level3_Screen(QWidget):
     def __init__(self, main_dialog, player_name):
         super().__init__()
@@ -1781,9 +1753,9 @@ class Level3_Screen(QWidget):
 
         self.metrics_logger = DrawingMetricsLogger(self.SAVE_FOLDER, "Level1Results.xlsx")
 
+        self.V_FOLDER = r"C:\Users\Hooria\PycharmProjects\Project4\.venv"
         self.parkinsons_detector = ParkinsonsDetector(
-            model_path=os.path.join(self.SAVE_FOLDER, 'parkinsons_model.keras'),
-            data_path=r'C:\Users\Hooria\Downloads\archive (1)\YOLODatasetFull\organized_dataset',
+            model_path=os.path.join(self.V_FOLDER, 'best_parkinsons_model.keras'),
             image_size=(128, 128)
         )
 
@@ -2229,8 +2201,7 @@ class Level3_Screen(QWidget):
 
             pixmap = self.create_drawing_pixmap()
 
-            timestamp = int(time.time())
-            temp_image_filename = f"temp_{self.player_name}_Level3_{timestamp}.png"
+            temp_image_filename = f"temp_{self.player_name}_Level3.png"
             temp_image_path = os.path.join(self.SAVE_FOLDER, temp_image_filename)
 
             if not os.path.exists(self.SAVE_FOLDER):
@@ -2322,18 +2293,6 @@ class Level3_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
 
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
@@ -2455,10 +2414,9 @@ class Level4_Screen(QWidget):
             self.metrics_logger = None
 
         try:
-            from parkinsons_detector import ParkinsonsDetector
+            self.V_FOLDER = r"C:\Users\Hooria\PycharmProjects\Project4\.venv"
             self.parkinsons_detector = ParkinsonsDetector(
-                model_path=os.path.join(self.SAVE_FOLDER, 'parkinsons_model.keras'),
-                data_path=r'C:\Users\Hooria\Downloads\archive (1)\YOLODatasetFull\organized_dataset',
+                model_path=os.path.join(self.V_FOLDER, 'best_parkinsons_model.keras'),
                 image_size=(128, 128)
             )
         except ImportError:
@@ -2529,7 +2487,7 @@ class Level4_Screen(QWidget):
         self.drawing = QPixmap(2000, 1100)
         self.drawing.fill(Qt.darkGreen)
 
-        self.trail_img = QPixmap("wolf.png")
+        self.trail_img = QPixmap("Images/wolf.png")
         if self.trail_img.isNull():
             self.trail_img = QPixmap(100, 100)
             self.trail_img.fill(Qt.red)
@@ -3088,8 +3046,7 @@ class Level4_Screen(QWidget):
 
             pixmap = self.create_drawing_pixmap()
 
-            timestamp = int(time.time())
-            temp_image_filename = f"temp_{self.player_name}_Level4_{timestamp}.png"
+            temp_image_filename = f"temp_{self.player_name}_Level4.png"
             temp_image_path = os.path.join(self.SAVE_FOLDER, temp_image_filename)
 
             if not os.path.exists(self.SAVE_FOLDER):
@@ -3177,18 +3134,6 @@ class Level4_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
 
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
@@ -3317,10 +3262,9 @@ class Level5_Screen(QWidget):
             self.metrics_logger = None
 
         try:
-            from parkinsons_detector import ParkinsonsDetector
+            self.V_FOLDER = r"C:\Users\Hooria\PycharmProjects\Project4\.venv"
             self.parkinsons_detector = ParkinsonsDetector(
-                model_path=os.path.join(self.SAVE_FOLDER, 'parkinsons_model.keras'),
-                data_path=r'C:\Users\Hooria\Downloads\archive (1)\YOLODatasetFull\organized_dataset',
+                model_path=os.path.join(self.V_FOLDER, 'best_parkinsons_model.keras'),
                 image_size=(128, 128)
             )
         except ImportError:
@@ -3354,7 +3298,7 @@ class Level5_Screen(QWidget):
         self.prediction_result = None
         self.saved_image_path = None
 
-        self.original_bg_pixmap = QPixmap("snail_back1.png")
+        self.original_bg_pixmap = QPixmap("Images/snail_back1.png")
         if self.original_bg_pixmap.isNull():
             self.original_bg_pixmap = QPixmap(800, 600)
             self.original_bg_pixmap.fill(Qt.white)
@@ -3691,9 +3635,7 @@ class Level5_Screen(QWidget):
 
             white_drawing = self.create_white_background_drawing()
 
-            import time as time_module
-            timestamp = int(time_module.time())
-            temp_image_filename = f"temp_{self.player_name}_Level5_{timestamp}.png"
+            temp_image_filename = f"temp_{self.player_name}_Level5.png"
             temp_image_path = os.path.join(self.SAVE_FOLDER, temp_image_filename)
 
             white_drawing.save(temp_image_path)
@@ -3833,18 +3775,6 @@ class Level5_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
 
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
@@ -4404,7 +4334,7 @@ class Level6_Screen(QWidget):
 
             import time as time_module
             timestamp = int(time_module.time())
-            temp_image_filename = f"temp_{self.player_name}_Level6_{timestamp}.png"
+            temp_image_filename = f"temp_{self.player_name}_Level6.png"
             temp_image_path = os.path.join(self.SAVE_FOLDER, temp_image_filename)
 
             white_drawing.save(temp_image_path)
@@ -4539,18 +4469,6 @@ class Level6_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
 
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
@@ -4731,7 +4649,6 @@ class Level6_Screen(QWidget):
         self.hide()
         self.main_dialog.show()
 
-
 class Level7_Screen(QWidget):
     def __init__(self, main_dialog, player_name):
         super().__init__()
@@ -4778,7 +4695,7 @@ class Level7_Screen(QWidget):
 
         self.bg1_label = QLabel(self)
         self.bg1_label.setScaledContents(True)
-        pixmap = QPixmap("puppy.png")
+        pixmap = QPixmap("Images/puppy.png")
         if not pixmap.isNull():
             self.bg1_label.setPixmap(pixmap)
             self.bg1_label.setGeometry(500, 100, 1000, 700)
@@ -5098,18 +5015,6 @@ class Level7_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
 
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
@@ -5764,18 +5669,6 @@ class Level8_Screen(QWidget):
             """)
             layout.addWidget(alz_risk_label)
 
-            if 'risk_score' in self.alzheimers_result:
-                alz_score_label = QLabel(f"Risk Score: {self.alzheimers_result['risk_score']:.3f}")
-                alz_score_label.setWordWrap(True)
-                alz_score_label.setAlignment(Qt.AlignCenter)
-                alz_score_label.setStyleSheet("""
-                    QLabel {
-                        color: #666666;
-                        font-size: 20px;
-                        margin-bottom: 10px;
-                    }
-                """)
-                layout.addWidget(alz_score_label)
 
             alz_interpretation = QLabel(self.alzheimers_result.get('interpretation', 'No interpretation available'))
             alz_interpretation.setWordWrap(True)
@@ -5973,7 +5866,7 @@ class Name_Screen(QWidget):
         # Background setup
         self.bg_label = QLabel(self)
         self.bg_label.setScaledContents(True)
-        self.pixmap = QPixmap("back2.jpg")
+        self.pixmap = QPixmap("Images/back2.jpg")
         if self.pixmap.isNull():
             print("Error: 'back2.jpg' not found or could not be loaded.")
         else:
@@ -6089,7 +5982,7 @@ class MainMenuScreen(QWidget):
 
         self.bg1_label = QLabel(self)
         self.bg1_label.setScaledContents(True)
-        self.original_pixmap = QPixmap("back.png")
+        self.original_pixmap = QPixmap("Images/back.png")
         if self.original_pixmap.isNull():
             print("Error: 'back.png' not found or could not be loaded.")
         else:
