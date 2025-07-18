@@ -2265,7 +2265,6 @@ class Level3_Screen(QWidget):
 
         # Alzheimer's results
         if self.alzheimers_result:
-            print(f"Displaying Alzheimer's results: {self.alzheimers_result}")
 
             alz_title = QLabel("Alzheimer's Risk Assessment")
             alz_title.setWordWrap(True)
@@ -2314,7 +2313,6 @@ class Level3_Screen(QWidget):
 
         # Parkinson's results
         if self.prediction_result:
-            print(f"Displaying Parkinson's results: {self.prediction_result}")
 
             park_title = QLabel("Parkinson's Risk Assessment")
             park_title.setWordWrap(True)
@@ -3155,7 +3153,6 @@ class Level4_Screen(QWidget):
 
             # Parkinson's results
         if self.prediction_result:
-            print(f"Displaying Parkinson's results: {self.prediction_result}")
 
             park_title = QLabel("Parkinson's Risk Assessment")
             park_title.setWordWrap(True)
