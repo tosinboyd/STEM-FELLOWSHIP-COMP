@@ -1,0 +1,471 @@
+import os
+os.environ["TF_ENABLE_ONEDNN_OPTS"] = "0"
+
+import numpy as np
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras import layers
+from tensorflow.keras.applications import MobileNetV2
+from tensorflow.keras.optimizers import Adam
+from tensorflow.keras.callbacks import EarlyStopping, ReduceLROnPlateau, ModelCheckpoint
+from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score, roc_auc_score, confusion_matrix
+import matplotlib.pyplot as plt
+from PIL import Image, ImageEnhance, ImageFilter, ImageOps
+import warnings
+warnings.filterwarnings('ignore')
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+tf.config.threading.set_inter_op_parallelism_threads(0)
+tf.config.threading.set_intra_op_parallelism_threads(0)
+
+try:
+    tf.config.optimizer.set_jit(True)
+except:
+    pass
+
+gpus = tf.config.list_physical_devices('GPU')
+if gpus:
+    try:
+        for gpu in gpus:
+            tf.config.experimental.set_memory_growth(gpu, True)
+        tf.keras.mixed_precision.set_global_policy('mixed_float16')
+    except RuntimeError:
+        pass
+else:
+    tf.keras.mixed_precision.set_global_policy('float32')
+
+np.random.seed(42)
+tf.random.set_seed(42)
+
+
+class ImagePreprocessor:
+    @staticmethod
+    def remove_background_and_isolate_drawing(image_path, output_path=None):
+        try:
+            image = Image.open(image_path)
+            if image is None:
+                raise ValueError(f"Could not load image from {image_path}")
+
+            if image.mode != 'RGB':
+                image = image.convert('RGB')
+
+            gray_image = image.convert('L')
+            blurred = gray_image.filter(ImageFilter.GaussianBlur(radius=1.5))
+            gray_array = np.array(blurred)
+
+            hist, _ = np.histogram(gray_array.flatten(), bins=256, range=(0, 256))
+
+            total_pixels = gray_array.size
+            current_max = 0
+            threshold = 0
+            sum_total = np.sum(np.arange(256) * hist)
+            sum_background = 0
+            weight_background = 0
+
+            for i in range(256):
+                weight_background += hist[i]
+                if weight_background == 0:
+                    continue
+
+                weight_foreground = total_pixels - weight_background
+                if weight_foreground == 0:
+                    break
+
+                sum_background += i * hist[i]
+                mean_background = sum_background / weight_background
+                mean_foreground = (sum_total - sum_background) / weight_foreground
+
+                between_class_variance = weight_background * weight_foreground * (
+                            mean_background - mean_foreground) ** 2
+
+                if between_class_variance > current_max:
+                    current_max = between_class_variance
+                    threshold = i
+
+            binary_array = (gray_array > threshold).astype(np.uint8) * 255
+            binary_image = Image.fromarray(binary_array, mode='L')
+            cleaned = binary_image.filter(ImageFilter.MedianFilter(size=3))
+            edge_enhanced = cleaned.filter(ImageFilter.EDGE_ENHANCE_MORE)
+
+            cleaned_array = np.array(cleaned)
+            edge_array = np.array(edge_enhanced)
+
+            combined_array = np.logical_or(cleaned_array > 128, edge_array > 128).astype(np.uint8) * 255
+            inverted_array = 255 - combined_array
+            final_image_pil = Image.fromarray(inverted_array, mode='L')
+            final_image_rgb = final_image_pil.convert('RGB')
+            final_image_array = np.array(final_image_rgb)
+
+            if output_path:
+                final_image_rgb.save(output_path)
+
+            return final_image_array
+
+        except Exception as e:
+            return None
+
+    @staticmethod
+    def enhance_line_drawing(image_array):
+        try:
+            if image_array.max() <= 1.0:
+                image_array = (image_array * 255).astype(np.uint8)
+
+            pil_image = Image.fromarray(image_array)
+            enhancer = ImageEnhance.Contrast(pil_image)
+            enhanced = enhancer.enhance(2.0)
+            sharpness_enhancer = ImageEnhance.Sharpness(enhanced)
+            sharpened = sharpness_enhancer.enhance(1.5)
+            edge_enhanced = sharpened.filter(ImageFilter.EDGE_ENHANCE)
+            unsharp_enhanced = edge_enhanced.filter(ImageFilter.UnsharpMask(radius=1, percent=150, threshold=3))
+            enhanced_array = np.array(unsharp_enhanced)
+
+            return enhanced_array
+
+        except Exception as e:
+            return image_array
+
+    @staticmethod
+    def adaptive_threshold_pil(image_array, block_size=11, c=2):
+        try:
+            pil_image = Image.fromarray(image_array, mode='L')
+            blurred = pil_image.filter(ImageFilter.GaussianBlur(radius=block_size // 2))
+            blurred_array = np.array(blurred)
+            threshold_array = (image_array > (blurred_array - c)).astype(np.uint8) * 255
+
+            return threshold_array
+
+        except Exception as e:
+            return image_array
+
+
+class VerboseTrainingCallback(keras.callbacks.Callback):
+    def __init__(self, model_save_path='best_parkinsons_model.keras'):
+        super().__init__()
+        self.best_val_loss = float('inf')
+        self.model_save_path = model_save_path
+
+    def on_epoch_end(self, epoch, logs=None):
+        logs = logs or {}
+        current_val_loss = logs.get('val_loss', float('inf'))
+
+        if current_val_loss < self.best_val_loss:
+            self.best_val_loss = current_val_loss
+
+
+class UltraFastParkinsonsDetector:
+    def __init__(self, data_path, image_size=(128, 128), batch_size=128):
+        self.data_path = data_path
+        self.image_size = image_size
+        self.batch_size = batch_size
+        self.model = None
+        self.history = None
+        self.class_names = ['healthy', 'parkinson']
+        self.preprocessor = ImagePreprocessor()
+
+    def create_ultra_fast_dataset(self, data_dir, is_training=True):
+        image_paths = []
+        labels = []
+
+        for class_idx, class_name in enumerate(self.class_names):
+            class_dir = os.path.join(data_dir, class_name)
+            if os.path.exists(class_dir):
+                class_paths = [
+                    os.path.join(class_dir, f) for f in os.listdir(class_dir)
+                    if f.lower().endswith(('.png', '.jpg', '.jpeg'))
+                ]
+                image_paths.extend(class_paths)
+                labels.extend([class_idx] * len(class_paths))
+
+        dataset = tf.data.Dataset.from_tensor_slices((image_paths, labels))
+
+        if is_training:
+            dataset = dataset.shuffle(len(image_paths), seed=42, reshuffle_each_iteration=False)
+
+        @tf.function
+        def ultra_fast_preprocess(image_path, label):
+            image = tf.io.read_file(image_path)
+            image = tf.image.decode_image(image, channels=3, expand_animations=False)
+            image = tf.image.resize(image, self.image_size, method='nearest')
+            image = tf.cast(image, tf.float32) * (1.0 / 255.0)
+
+            if is_training:
+                image = tf.image.random_flip_left_right(image)
+                image = tf.image.random_brightness(image, 0.1)
+
+            return image, tf.cast(label, tf.float32)
+
+        dataset = dataset.map(ultra_fast_preprocess, num_parallel_calls=tf.data.AUTOTUNE)
+        dataset = dataset.batch(self.batch_size, drop_remainder=True)
+        dataset = dataset.cache()
+        dataset = dataset.prefetch(tf.data.AUTOTUNE)
+
+        return dataset
+
+    def build_lightning_model(self):
+        base_model = MobileNetV2(
+            weights='imagenet',
+            include_top=False,
+            input_shape=(*self.image_size, 3),
+            alpha=0.75
+        )
+
+        base_model.trainable = True
+        for layer in base_model.layers[:-10]:
+            layer.trainable = False
+
+        inputs = keras.Input(shape=(*self.image_size, 3))
+        x = base_model(inputs, training=False)
+        x = layers.GlobalAveragePooling2D()(x)
+        x = layers.Dropout(0.2)(x)
+        x = layers.Dense(64, activation='relu')(x)
+
+        if tf.keras.mixed_precision.global_policy().name == 'mixed_float16':
+            outputs = layers.Dense(1, activation='sigmoid', dtype='float32')(x)
+        else:
+            outputs = layers.Dense(1, activation='sigmoid')(x)
+
+        model = keras.Model(inputs, outputs)
+
+        optimizer = Adam(learning_rate=0.002, beta_1=0.9, beta_2=0.999)
+        model.compile(
+            optimizer=optimizer,
+            loss='binary_crossentropy',
+            metrics=['accuracy', 'precision', 'recall'],
+            run_eagerly=False
+        )
+
+        self.model = model
+        return model
+
+    def lightning_train(self, epochs=10):
+        train_dataset = self.create_ultra_fast_dataset(
+            os.path.join(self.data_path, 'train'), is_training=True
+        )
+        val_dataset = self.create_ultra_fast_dataset(
+            os.path.join(self.data_path, 'val'), is_training=False
+        )
+
+        # Print model save location before training
+        model_save_path = 'best_parkinsons_model.keras'
+        absolute_save_path = os.path.abspath(model_save_path)
+        print(f"Model will be saved to: {absolute_save_path}")
+
+        callbacks = [
+            VerboseTrainingCallback(model_save_path),
+            ModelCheckpoint(
+                model_save_path,
+                monitor='val_loss',
+                save_best_only=True,
+                verbose=0
+            ),
+            EarlyStopping(
+                monitor='val_accuracy',
+                patience=3,
+                restore_best_weights=True,
+                verbose=1,
+                mode='max'
+            ),
+            ReduceLROnPlateau(
+                monitor='val_loss',
+                factor=0.3,
+                patience=2,
+                min_lr=1e-6,
+                verbose=1
+            )
+        ]
+
+        self.history = self.model.fit(
+            train_dataset,
+            epochs=epochs,
+            validation_data=val_dataset,
+            callbacks=callbacks,
+            verbose=1
+        )
+
+        return self.history
+
+    def plot_training_history(self):
+        if self.history is None:
+            return
+
+        fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 5))
+
+        # Plot accuracy
+        ax1.plot(self.history.history['accuracy'], 'b-', label='Training Accuracy', linewidth=2)
+        ax1.plot(self.history.history['val_accuracy'], 'r-', label='Validation Accuracy', linewidth=2)
+        ax1.set_title('Model Accuracy', fontsize=14, fontweight='bold')
+        ax1.set_xlabel('Epoch', fontsize=12)
+        ax1.set_ylabel('Accuracy', fontsize=12)
+        ax1.legend(loc='lower right')
+        ax1.grid(True, alpha=0.3)
+        ax1.set_ylim([0, 1])
+
+        # Plot loss
+        ax2.plot(self.history.history['loss'], 'b-', label='Training Loss', linewidth=2)
+        ax2.plot(self.history.history['val_loss'], 'r-', label='Validation Loss', linewidth=2)
+        ax2.set_title('Model Loss', fontsize=14, fontweight='bold')
+        ax2.set_xlabel('Epoch', fontsize=12)
+        ax2.set_ylabel('Loss', fontsize=12)
+        ax2.legend(loc='upper right')
+        ax2.grid(True, alpha=0.3)
+
+        plt.tight_layout()
+        plt.savefig('training_history.png', dpi=300, bbox_inches='tight')
+        plt.show()
+
+    def rapid_evaluate(self):
+        val_dataset = self.create_ultra_fast_dataset(
+            os.path.join(self.data_path, 'val'), is_training=False
+        )
+
+        all_predictions = []
+        all_labels = []
+
+        for batch_images, batch_labels in val_dataset:
+            predictions = self.model.predict(batch_images, verbose=0)
+            all_predictions.extend(predictions.flatten())
+            all_labels.extend(batch_labels.numpy())
+
+        y_pred_probs = np.array(all_predictions)
+        y_true = np.array(all_labels).astype(int)
+
+        thresholds = np.arange(0.1, 0.9, 0.05)
+        f1_scores = []
+
+        for threshold in thresholds:
+            y_pred_thresh = (y_pred_probs > threshold).astype(int)
+            f1 = f1_score(y_true, y_pred_thresh)
+            f1_scores.append(f1)
+
+        best_threshold = thresholds[np.argmax(f1_scores)]
+        y_pred = (y_pred_probs > best_threshold).astype(int)
+
+        accuracy = accuracy_score(y_true, y_pred)
+        precision = precision_score(y_true, y_pred)
+        recall = recall_score(y_true, y_pred)
+        f1 = f1_score(y_true, y_pred)
+        auc = roc_auc_score(y_true, y_pred_probs)
+
+        return y_true, y_pred, y_pred_probs, best_threshold
+
+    def instant_preprocess(self, image_path, save_processed=False):
+        try:
+            processed_image = self.preprocessor.remove_background_and_isolate_drawing(
+                image_path,
+                output_path=image_path.replace('.png', '_processed.png') if save_processed else None
+            )
+
+            if processed_image is None:
+                return None
+
+            enhanced_image = self.preprocessor.enhance_line_drawing(processed_image)
+            image_tensor = tf.constant(enhanced_image, dtype=tf.float32)
+            image_tensor = tf.image.resize(image_tensor, self.image_size, method='bilinear')
+            image_tensor = image_tensor / 255.0
+            image_tensor = tf.expand_dims(image_tensor, 0)
+
+            return image_tensor
+
+        except Exception as e:
+            return None
+
+    def instant_predict(self, image_path, save_processed=False):
+        if self.model is None:
+            return None
+
+        processed_image = self.instant_preprocess(image_path, save_processed)
+        if processed_image is None:
+            return None
+
+        prediction = self.model.predict(processed_image, verbose=0)[0][0]
+        risk_score = float(prediction)
+
+        if risk_score < 0.35:
+            risk_level = "Low Risk"
+            interpretation = "Spiral drawing shows characteristics typical of healthy motor control"
+        elif risk_score < 0.65:
+            risk_level = "Moderate Risk"
+            interpretation = "Spiral drawing shows some irregularities that may warrant further evaluation"
+        else:
+            risk_level = "High Risk"
+            interpretation = "Spiral drawing shows significant irregularities consistent with motor control issues"
+
+        distance_from_center = abs(risk_score - 0.5)
+        confidence = min(distance_from_center * 2, 0.95)
+
+        result = {
+            'risk_score': risk_score,
+            'risk_level': risk_level,
+            'confidence': confidence,
+            'interpretation': interpretation
+        }
+
+        return result
+
+    def save_model(self, filepath='parkinsons_model.keras'):
+        if self.model is not None:
+            absolute_filepath = os.path.abspath(filepath)
+            print(f"Saving model to: {absolute_filepath}")
+            self.model.save(filepath, save_format='keras')
+            print(f"Model successfully saved to: {absolute_filepath}")
+
+    def load_model(self, filepath='parkinsons_model.keras'):
+        try:
+            absolute_filepath = os.path.abspath(filepath)
+            print(f"Loading model from: {absolute_filepath}")
+            self.model = keras.models.load_model(filepath)
+            print(f"Model successfully loaded from: {absolute_filepath}")
+            return True
+        except Exception as e:
+            print(f"Error loading model from {absolute_filepath}: {e}")
+            return False
+
+
+class LightningTrainer:
+    def __init__(self, data_path):
+        self.detector = UltraFastParkinsonsDetector(data_path, batch_size=128)
+
+    def speed_train(self, epochs=10):
+        self.detector.build_lightning_model()
+        self.detector.lightning_train(epochs)
+        self.detector.plot_training_history()
+        y_true, y_pred, y_pred_probs, best_threshold = self.detector.rapid_evaluate()
+        self.detector.save_model()
+        return self.detector
+
+    def quick_predict(self, image_path, save_processed=False):
+        return self.detector.instant_predict(image_path, save_processed)
+
+    def batch_predict(self, image_paths, save_processed=False):
+        results = []
+
+        for i, path in enumerate(image_paths):
+            result = self.quick_predict(path, save_processed)
+            if result:
+                results.append({
+                    'path': path,
+                    'risk_score': result['risk_score'],
+                    'risk_level': result['risk_level'],
+                    'confidence': result['confidence'],
+                    'interpretation': result['interpretation']
+                })
+
+        return results
+
+
+def main():
+    data_path = r'C:\Users\Hooria\Downloads\archive (1)\YOLODatasetFull\organized_dataset'
+    trainer = LightningTrainer(data_path)
+    detector = trainer.speed_train(epochs=10)
+    test_image_path = r"C:\Users\Hooria\PycharmProjects\Project4\.venv\city_img\P3.png"
+    result = trainer.quick_predict(test_image_path)
+
+    if result:
+        print(f"Risk Score: {result['risk_score']:.4f}")
+        print(f"Risk Level: {result['risk_level']}")
+        print(f"Confidence: {result['confidence']:.4f}")
+        print(f"Interpretation: {result['interpretation']}")
+
+
+if __name__ == "__main__":
+    main()
